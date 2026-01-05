@@ -1,0 +1,407 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: #232f3e;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #4a5568;
+}
+
+/* Custom styles */
+@layer components {
+  .btn-primary {
+    @apply bg-amazon-orange hover:bg-amazon-orange-dark text-amazon font-semibold py-2 px-4 rounded-lg transition-colors duration-200;
+  }
+  
+  .btn-secondary {
+    @apply bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200;
+  }
+  
+  .btn-outline {
+    @apply border-2 border-amazon-orange text-amazon-orange hover:bg-amazon-orange hover:text-amazon font-semibold py-2 px-4 rounded-lg transition-colors duration-200;
+  }
+  
+  .input-field {
+    @apply w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-amazon-orange focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-white transition-colors duration-200;
+  }
+  
+  .card {
+    @apply bg-white dark:bg-gray-800 rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300;
+  }
+  
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+  
+  .badge-success {
+    @apply bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200;
+  }
+  
+  .badge-warning {
+    @apply bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200;
+  }
+  
+  .badge-danger {
+    @apply bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200;
+  }
+  
+  .badge-info {
+    @apply bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200;
+  }
+}
+
+/* Amazon-like gradient button */
+.amazon-btn {
+  background: linear-gradient(to bottom, #f7dfa5, #f0c14b);
+  border: 1px solid #a88734;
+  border-radius: 3px;
+  color: #111;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 8px 16px;
+  text-align: center;
+  text-decoration: none;
+}
+
+.amazon-btn:hover {
+  background: linear-gradient(to bottom, #f5d78e, #eeba37);
+}
+
+/* Rating stars */
+.star-rating {
+  color: #de7921;
+}
+
+/* Price styling */
+.price-whole {
+  font-size: 28px;
+  font-weight: 400;
+}
+
+.price-fraction {
+  font-size: 13px;
+  position: relative;
+  top: -9px;
+}
+
+.price-symbol {
+  font-size: 13px;
+  position: relative;
+  top: -9px;
+}
+
+/* Skeleton loading */
+.skeleton {
+  @apply animate-pulse bg-gray-200 dark:bg-gray-700 rounded;
+}
+
+/* Product card hover effect */
+.product-card {
+  @apply transform transition-transform duration-200 hover:scale-[1.02];
+}
+
+/* Custom focus styles */
+*:focus {
+  outline: none;
+}
+
+*:focus-visible {
+  @apply ring-2 ring-amazon-orange ring-offset-2;
+}
+
+/* Smooth page transitions */
+.page-enter {
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+.page-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 300ms, transform 300ms;
+}
+
+.page-exit {
+  opacity: 1;
+}
+
+.page-exit-active {
+  opacity: 0;
+  transition: opacity 300ms;
+}
+
+/* Mobile menu animation */
+.mobile-menu-enter {
+  transform: translateX(-100%);
+}
+
+.mobile-menu-enter-active {
+  transform: translateX(0);
+  transition: transform 300ms ease-out;
+}
+
+.mobile-menu-exit {
+  transform: translateX(0);
+}
+
+.mobile-menu-exit-active {
+  transform: translateX(-100%);
+  transition: transform 300ms ease-in;
+}
+
+/* ============================================
+   RESPONSIVE & SWIPER STYLES
+   ============================================ */
+
+/* Hero Swiper Carousel - Full width slides */
+.hero-height .swiper-slide {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.hero-height .swiper-slide img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Product/Deals Swiper - Proper card sizing */
+.deals-swiper {
+  width: 100%;
+  padding: 4px 0;
+  overflow: hidden;
+}
+
+.deals-swiper .swiper-wrapper {
+  align-items: stretch;
+}
+
+.deals-swiper .swiper-slide {
+  height: auto;
+  box-sizing: border-box;
+}
+
+/* Ensure product cards fill slide width */
+.deals-swiper .swiper-slide > a,
+.deals-swiper .swiper-slide > div {
+  width: 100%;
+  height: 100%;
+}
+
+/* Swiper Navigation Buttons */
+.swiper-button-next,
+.swiper-button-prev {
+  color: #fff !important;
+  background: rgba(0, 0, 0, 0.5);
+  width: 40px !important;
+  height: 80px !important;
+  margin-top: -40px !important;
+  border-radius: 4px;
+}
+
+.swiper-button-next::after,
+.swiper-button-prev::after {
+  font-size: 20px !important;
+  font-weight: bold;
+}
+
+.swiper-button-next:hover,
+.swiper-button-prev:hover {
+  background: rgba(0, 0, 0, 0.7);
+}
+
+/* Deals section navigation - smaller buttons */
+.deals-swiper .swiper-button-next,
+.deals-swiper .swiper-button-prev {
+  background: rgba(0, 0, 0, 0.6);
+  width: 36px !important;
+  height: 60px !important;
+  margin-top: -30px !important;
+  top: 50%;
+}
+
+.deals-swiper .swiper-button-next::after,
+.deals-swiper .swiper-button-prev::after {
+  font-size: 16px !important;
+}
+
+.swiper-pagination-bullet {
+  background: #fff !important;
+  opacity: 0.6;
+  width: 10px !important;
+  height: 10px !important;
+}
+
+.swiper-pagination-bullet-active {
+  background: #ff9900 !important;
+  opacity: 1;
+}
+
+/* Mobile-first responsive breakpoints */
+@media (max-width: 480px) {
+  /* Extra small devices */
+  .swiper-button-next,
+  .swiper-button-prev {
+    display: none !important;
+  }
+  
+  .swiper-pagination {
+    bottom: 5px !important;
+  }
+}
+
+@media (min-width: 481px) and (max-width: 768px) {
+  /* Small tablets */
+  .swiper-button-next,
+  .swiper-button-prev {
+    width: 35px !important;
+    height: 60px !important;
+  }
+}
+
+/* Container responsive padding */
+.container-responsive {
+  @apply px-3 sm:px-4 md:px-6 lg:px-8;
+}
+
+/* Responsive grid for products */
+.product-grid {
+  @apply grid gap-3 sm:gap-4;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (min-width: 640px) {
+  .product-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 768px) {
+  .product-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .product-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1280px) {
+  .product-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+/* Responsive text sizes */
+.text-responsive-xs {
+  @apply text-xs sm:text-sm;
+}
+
+.text-responsive-sm {
+  @apply text-sm sm:text-base;
+}
+
+.text-responsive-base {
+  @apply text-base sm:text-lg md:text-xl;
+}
+
+.text-responsive-lg {
+  @apply text-lg sm:text-xl md:text-2xl lg:text-3xl;
+}
+
+.text-responsive-xl {
+  @apply text-xl sm:text-2xl md:text-3xl lg:text-4xl xl:text-5xl;
+}
+
+/* Safe area for mobile devices with notches */
+@supports (padding: max(0px)) {
+  .safe-area-inset {
+    padding-left: max(1rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
+  }
+}
+
+/* Touch-friendly tap targets for mobile */
+@media (max-width: 768px) {
+  button,
+  a,
+  input[type="submit"],
+  input[type="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* Hide scrollbar but keep functionality */
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Responsive card styles */
+.card-responsive {
+  @apply p-3 sm:p-4 md:p-5 lg:p-6;
+}
+
+/* Hero section responsive */
+.hero-height {
+  height: 200px;
+}
+
+@media (min-width: 480px) {
+  .hero-height {
+    height: 280px;
+  }
+}
+
+@media (min-width: 640px) {
+  .hero-height {
+    height: 350px;
+  }
+}
+
+@media (min-width: 768px) {
+  .hero-height {
+    height: 400px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .hero-height {
+    height: 480px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .hero-height {
+    height: 550px;
+  }
+}
