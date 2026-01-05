@@ -70,7 +70,7 @@ A professional, feature-rich e-commerce website built with the MERN stack (Mongo
 ## 📁 Project Structure
 
 ```
-ecommerce-amazon/
+ecommerce-Clone/
 ├── client/                 # React frontend
 │   ├── public/
 │   ├── src/
@@ -107,8 +107,8 @@ ecommerce-amazon/
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/your-username/ecommerce-amazon.git
-   cd ecommerce-amazon
+   git clone https://github.com/your-username/ecommerce-Clone.git
+   cd ecommerce-Clone
    ```
 
 2. **Install dependencies**
@@ -146,8 +146,8 @@ ecommerce-amazon/
 
 ### Admin
 ```
-Email: admin@amazon.com
-Password: admin123
+Email: xyzzzzz@amazon.com
+Password: XYZZZZ123
 ```
 
 ### User
