@@ -296,7 +296,7 @@ const generateSlug = (name) => {
 const seedDatabase = async () => {
   try {
     // Connect to MongoDB
-    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/ecommerce_amazon');
+    await mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://Ecommerce_Clone:69hQejy3NDFBYCub@ecommerceclone.uptv2tb.mongodb.net/ecommerce_amazon?retryWrites=true&w=majority&appName=EcommerceClone');
     console.log('Connected to MongoDB');
 
     // Clear existing data
