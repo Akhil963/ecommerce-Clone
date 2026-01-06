@@ -24,3 +24,6 @@ coverage/
 *.class
 *.exe
 *.dll
+
+# Local Netlify folder
+.netlify
