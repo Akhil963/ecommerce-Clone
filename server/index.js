@@ -104,7 +104,8 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
   process.env.CLIENT_URL,
-  // Add your production domains here
+  // Production domains
+  'https://ecommerce-clonee.netlify.app',
 ].filter(Boolean);
 
 app.use(cors({

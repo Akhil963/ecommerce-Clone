@@ -292,7 +292,7 @@ const Register = () => {
   };
 
   const handleGoogleLogin = () => {
-    window.location.href = `${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/auth/google`;
+    window.location.href = `${process.env.REACT_APP_API_URL || 'https://amazon-clone-api-2vgt.onrender.com/api'}/auth/google`;
   };
 
   // Step indicator component
