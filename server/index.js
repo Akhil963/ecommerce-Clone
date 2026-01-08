@@ -148,17 +148,6 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'Server is running', environment: process.env.NODE_ENV });
 });
 
-// Serve static assets in production
-if (process.env.NODE_ENV === 'production') {
-  // Serve static files from the React build folder
-  app.use(express.static(path.join(__dirname, '../client/build')));
-  
-  // Handle React routing, return all requests to React app
-  app.get('*', (req, res) => {
-    res.sendFile(path.resolve(__dirname, '../client', 'build', 'index.html'));
-  });
-}
-
 // 404 handler for API routes
 app.use('/api/*', (req, res) => {
   res.status(404).json({
