@@ -103,9 +103,8 @@ app.use(hpp());
 const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
-  process.env.CLIENT_URL,
-  // Production domains
   'https://ecommerce-clonee.netlify.app',
+  process.env.CLIENT_URL,
 ].filter(Boolean);
 
 app.use(cors({
@@ -118,15 +117,25 @@ app.use(cors({
       return callback(null, true);
     }
     
-    if (allowedOrigins.includes(origin)) {
+    // Check if origin is in allowed list (handle with/without trailing slash)
+    const isAllowed = allowedOrigins.some(allowed => {
+      if (!allowed) return false;
+      // Normalize both URLs for comparison
+      const normalizedAllowed = new URL(allowed).origin;
+      const normalizedOrigin = new URL(origin).origin;
+      return normalizedAllowed === normalizedOrigin;
+    });
+    
+    if (isAllowed) {
       callback(null, true);
     } else {
+      console.error(`CORS blocked origin: ${origin}. Allowed: ${allowedOrigins.join(', ')}`);
       callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']
 }));
 app.use(passport.initialize());
 
