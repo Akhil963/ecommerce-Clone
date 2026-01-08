@@ -125,8 +125,11 @@ app.use(cors({
       const normalizedOrigin = new URL(origin).origin;
       return normalizedAllowed === normalizedOrigin;
     });
-    
-    if (isAllowed) {
+
+    // Also allow all Vercel preview deployments (*.vercel.app)
+    const isVercelPreview = origin && origin.includes('.vercel.app');
+
+    if (isAllowed || isVercelPreview) {
       callback(null, true);
     } else {
       console.error(`CORS blocked origin: ${origin}. Allowed: ${allowedOrigins.join(', ')}`);
