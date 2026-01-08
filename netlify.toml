@@ -5,6 +5,8 @@
 [build.environment]
   REACT_APP_API_URL = "https://amazon-clone-api-2vgt.onrender.com/api"
   REACT_APP_GOOGLE_CLIENT_ID = "320172624128-7ggdtsb0cevqfet3ikus15lpivjk777t.apps.googleusercontent.com"
+  SKIP_PREFLIGHT_CHECK = "true"
+  DISABLE_ESLINT_PLUGIN = "false"
 
 [[redirects]]
   from = "/*"
