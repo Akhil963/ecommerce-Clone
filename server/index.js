@@ -133,6 +133,17 @@ app.use(passport.initialize());
 // Static files for uploads
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+// Root endpoint
+app.get('/', (req, res) => {
+  res.json({
+    success: true,
+    message: 'E-Commerce API Server',
+    version: '1.0.0',
+    environment: process.env.NODE_ENV,
+    documentation: '/api'
+  });
+});
+
 // Root API endpoint
 app.get('/api', (req, res) => {
   res.json({
