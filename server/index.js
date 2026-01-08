@@ -133,6 +133,28 @@ app.use(passport.initialize());
 // Static files for uploads
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+// Root API endpoint
+app.get('/api', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Welcome to E-Commerce API',
+    version: '1.0.0',
+    environment: process.env.NODE_ENV,
+    uptime: process.uptime(),
+    endpoints: {
+      health: '/api/health',
+      auth: '/api/auth',
+      products: '/api/products',
+      categories: '/api/categories',
+      cart: '/api/cart',
+      orders: '/api/orders',
+      users: '/api/users',
+      admin: '/api/admin',
+      reviews: '/api/reviews'
+    }
+  });
+});
+
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
