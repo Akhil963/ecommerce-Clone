@@ -103,7 +103,7 @@ app.use(hpp());
 const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
-  'https://ecommerce-clonee.netlify.app',
+  'https://ecommerce-clonee.vercel.app',
   process.env.CLIENT_URL,
 ].filter(Boolean);
 
