@@ -1,5 +1,5 @@
 [build]
-  command = "npm run build --prefix client"
+  command = "npm install --prefix client && npm run build --prefix client"
   publish = "client/build"
 
 [build.environment]
