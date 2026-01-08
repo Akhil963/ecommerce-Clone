@@ -1,5 +1,6 @@
 node_modules/
 .env
+.env.local
 *.log
 npm-debug.log*
 .DS_Store
@@ -15,7 +16,6 @@ coverage/
 .txt
 .vscode/
 .cache/
-*.local
 *.bak
 *.tmp
 *.old
