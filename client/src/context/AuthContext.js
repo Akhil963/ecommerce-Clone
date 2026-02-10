@@ -62,7 +62,7 @@ export const AuthProvider = ({ children }) => {
 
   const phoneLogin = async (phone, otp) => {
     try {
-      const response = await authAPI.verifyPhoneOTP(phone, otp);
+      const response = await authAPI.verifyPhoneOTPLogin(phone, otp);
       const { token, user } = response.data;
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(user));
