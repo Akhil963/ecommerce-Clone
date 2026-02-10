@@ -1,7 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
-import { SpeedInsights } from '@vercel/speed-insights/react';
 import { AuthProvider } from './context/AuthContext';
 import { CartProvider } from './context/CartContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -54,7 +53,6 @@ function App() {
       <AuthProvider>
         <CartProvider>
           <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-            <SpeedInsights />
             <Toaster
               position="top-center"
               toastOptions={{
