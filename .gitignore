@@ -1,29 +1,77 @@
-node_modules/
+# Environment variables
 .env
 .env.local
-*.log
-npm-debug.log*
-.DS_Store
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Dependencies
+node_modules/
+client/node_modules/
+server/node_modules/
+package-lock.json
+yarn.lock
+
+# Build outputs
 dist/
 build/
 client/build/
-client/node_modules/
+server/dist/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# IDE and Editor
 .idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw[op]
 *.swp
 *.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# Testing
 coverage/
 .nyc_output/
-.txt
-.vscode/
-.cache/
+.jest-cache/
+__snapshots__/
+
+# Temporary files
 *.bak
 *.tmp
 *.old
 *.orig
 *.rej
+*.cache
+
+# Compiled files
 *.class
 *.exe
 *.dll
+*.o
+*.so
 
-# Local Netlify folder
+# Deployment
 .netlify
+.vercel
+.env.production
+dist/
+build/
+
+# Other
+.cache/
+.firebase/
+.turbo/
+*.pem
+.git-credentials
