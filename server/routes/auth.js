@@ -71,8 +71,10 @@ router.post('/register/init', [
       }
     }
 
-    // Send email OTP
-    await sendEmailOTP(email, name, emailOTP);
+    // Send email OTP (fire and forget - don't block registration)
+    sendEmailOTP(email, name, emailOTP).catch(err => {
+      console.error('📧 Email send error (non-blocking):', err.message);
+    });
 
     res.json({
       success: true,
@@ -210,8 +212,10 @@ router.post('/register/resend-email-otp', [
     registration.emailOTPExpires = Date.now() + 10 * 60 * 1000;
     pendingRegistrations.set(registrationId, registration);
 
-    // Send email OTP
-    await sendEmailOTP(registration.email, registration.name, emailOTP);
+    // Send email OTP (fire and forget - don't block)
+    sendEmailOTP(registration.email, registration.name, emailOTP).catch(err => {
+      console.error('📧 Email send error (non-blocking):', err.message);
+    });
 
     res.json({
       success: true,
@@ -545,8 +549,10 @@ router.post('/forgot-password', [
     user.passwordResetExpires = Date.now() + 60 * 60 * 1000; // 1 hour
     await user.save();
 
-    // Send reset email
-    await sendPasswordResetEmail(user.email, user.name, resetToken);
+    // Send reset email (fire and forget - don't block)
+    sendPasswordResetEmail(user.email, user.name, resetToken).catch(err => {
+      console.error('📧 Email send error (non-blocking):', err.message);
+    });
 
     res.json({
       success: true,
