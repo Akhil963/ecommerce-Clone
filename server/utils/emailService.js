@@ -1,16 +1,12 @@
 const nodemailer = require('nodemailer');
-const axios = require('axios');
 
-// Email service configuration
-const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
-const SENDGRID_CONFIGURED = !!SENDGRID_API_KEY;
+// Check if email configuration is available
+const isEmailConfigured = process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASSWORD;
 
-const isSMTPConfigured = process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASSWORD;
-let smtpTransporter = null;
+let transporter = null;
 
-// Initialize SMTP as fallback
-if (isSMTPConfigured) {
-  smtpTransporter = nodemailer.createTransport({
+if (isEmailConfigured) {
+  transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port: process.env.SMTP_PORT || 587,
     secure: false,
@@ -29,83 +25,29 @@ if (isSMTPConfigured) {
       rateLimit: 14
     }
   });
-  console.log('✅ SMTP fallback configured');
-}
-
-if (SENDGRID_CONFIGURED) {
-  console.log('✅ SendGrid email service configured (primary)');
-} else if (isSMTPConfigured) {
-  console.log('⚠️ SendGrid not configured. Using SMTP as fallback.');
+  console.log('✅ Email service configured with extended timeouts');
 } else {
-  console.log('⚠️ No email service configured - emails will be logged to console');
+  console.log('⚠️ Email service not configured - emails will be logged to console instead');
 }
 
-// Retry logic utilities
+// Send email utility with retry logic
 const MAX_RETRIES = 3;
-const RETRY_DELAY = 2000;
+const RETRY_DELAY = 2000; // 2 seconds between retries
+
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// SendGrid email sender
-const sendViaSendGrid = async (options, retryCount = 0) => {
-  const fromEmail = process.env.EMAIL_FROM || `noreply@ecommerce-clone.com`;
-  const fromName = process.env.EMAIL_FROM_NAME || 'Amazon Ecommerce';
-
-  const payload = {
-    personalizations: [
-      {
-        to: [{ email: options.to }],
-        subject: options.subject
-      }
-    ],
-    from: {
-      email: fromEmail,
-      name: fromName
-    },
-    content: [
-      {
-        type: 'text/html',
-        value: options.html || options.text
-      }
-    ]
-  };
-
-  try {
-    await axios.post('https://api.sendgrid.com/v3/mail/send', payload, {
-      headers: {
-        'Authorization': `Bearer ${SENDGRID_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      timeout: 10000
-    });
-    console.log('✅ Email sent via SendGrid to:', options.to);
+exports.sendEmail = async (options, retryCount = 0) => {
+  // If email is not configured, just log and return success
+  if (!transporter) {
+    console.log('📧 [DEV MODE] Email would be sent to:', options.to);
+    console.log('   Subject:', options.subject);
+    console.log('   (Email not actually sent - SMTP not configured)');
     return true;
-  } catch (error) {
-    const isRetryable = error.code === 'ETIMEDOUT' || error.code === 'ECONNREFUSED' || !error.response;
-    
-    if (isRetryable && retryCount < MAX_RETRIES) {
-      console.warn(`⏱️ SendGrid timeout, retrying (${retryCount + 1}/${MAX_RETRIES})...`);
-      await delay(RETRY_DELAY);
-      return sendViaSendGrid(options, retryCount + 1);
-    }
-    
-    console.error('❌ SendGrid email failed:', {
-      error: error.message,
-      status: error.response?.status,
-      to: options.to,
-      subject: options.subject
-    });
-    return false;
-  }
-};
-
-// SMTP email sender
-const viaSmtp = async (options, retryCount = 0) => {
-  if (!smtpTransporter) {
-    return false;
   }
 
+  // Use EMAIL_FROM from env, or fallback to SMTP_USER
   const fromEmail = process.env.EMAIL_FROM || `"${process.env.EMAIL_FROM_NAME || 'Amazon Ecommerce'}" <${process.env.SMTP_USER}>`;
-
+  
   const mailOptions = {
     from: fromEmail,
     to: options.to,
@@ -115,52 +57,31 @@ const viaSmtp = async (options, retryCount = 0) => {
   };
 
   try {
-    await smtpTransporter.sendMail(mailOptions);
-    console.log('✅ Email sent via SMTP to:', options.to);
+    await transporter.sendMail(mailOptions);
+    console.log('✅ Email sent successfully to:', options.to);
     return true;
   } catch (error) {
+    // Retry logic for timeout errors
     const isTimeoutError = error.code === 'ETIMEDOUT' || error.code === 'ECONNREFUSED' || error.code === 'EHOSTUNREACH';
     
     if (isTimeoutError && retryCount < MAX_RETRIES) {
-      console.warn(`⏱️ SMTP timeout, retrying (${retryCount + 1}/${MAX_RETRIES})...`);
+      console.warn(`⏱️ Timeout error, retrying (${retryCount + 1}/${MAX_RETRIES}) in ${RETRY_DELAY}ms...`, {
+        code: error.code,
+        to: options.to
+      });
       await delay(RETRY_DELAY);
-      return viaSmtp(options, retryCount + 1);
+      return exports.sendEmail(options, retryCount + 1);
     }
     
-    console.error('❌ SMTP email failed:', {
+    console.error('❌ Email sending failed:', {
       error: error.message,
       code: error.code,
       to: options.to,
-      subject: options.subject
+      subject: options.subject,
+      attempts: retryCount + 1
     });
     return false;
   }
-};
-
-// Main send email function with automatic provider selection
-exports.sendEmail = async (options) => {
-  // No email service configured - log and return success
-  if (!SENDGRID_CONFIGURED && !isSMTPConfigured) {
-    console.log('📧 [DEV MODE] Email would be sent to:', options.to);
-    console.log('   Subject:', options.subject);
-    return true;
-  }
-
-  // Try SendGrid first (if configured), then SMTP as fallback
-  if (SENDGRID_CONFIGURED) {
-    const success = await sendViaSendGrid(options);
-    if (success) return true;
-    
-    // If SendGrid fails and SMTP is available, try SMTP
-    if (isSMTPConfigured) {
-      console.log('📧 SendGrid failed, attempting SMTP fallback...');
-      return await viaSmtp(options);
-    }
-    return false;
-  }
-
-  // Only SMTP available
-  return await viaSmtp(options);
 };
 
 // Send verification email
