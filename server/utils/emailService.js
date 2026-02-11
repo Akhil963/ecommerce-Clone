@@ -10,9 +10,19 @@ if (isEmailConfigured) {
     host: process.env.SMTP_HOST,
     port: process.env.SMTP_PORT || 587,
     secure: false,
+    requireTLS: true,
     auth: {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASSWORD
+    },
+    connectionTimeout: 15000,
+    socketTimeout: 15000,
+    greetingTimeout: 10000,
+    pool: {
+      maxConnections: 5,
+      maxMessages: 100,
+      rateDelta: 2000,
+      rateLimit: 14
     }
   });
   console.log('✅ Email service configured');
@@ -43,9 +53,15 @@ exports.sendEmail = async (options) => {
 
   try {
     await transporter.sendMail(mailOptions);
+    console.log('✅ Email sent successfully to:', options.to);
     return true;
   } catch (error) {
-    console.error('Email sending error:', error);
+    console.error('❌ Email sending failed:', {
+      error: error.message,
+      code: error.code,
+      to: options.to,
+      subject: options.subject
+    });
     return false;
   }
 };
