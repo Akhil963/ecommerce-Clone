@@ -15,23 +15,28 @@ if (isEmailConfigured) {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASSWORD
     },
-    connectionTimeout: 15000,
-    socketTimeout: 15000,
-    greetingTimeout: 10000,
+    connectionTimeout: 30000,      // Increased to 30 seconds
+    socketTimeout: 30000,          // Increased to 30 seconds
+    greetingTimeout: 15000,        // Increased to 15 seconds
     pool: {
-      maxConnections: 5,
+      maxConnections: 3,           // Reduced for stability
       maxMessages: 100,
       rateDelta: 2000,
       rateLimit: 14
     }
   });
-  console.log('✅ Email service configured');
+  console.log('✅ Email service configured with extended timeouts');
 } else {
   console.log('⚠️ Email service not configured - emails will be logged to console instead');
 }
 
-// Send email utility
-exports.sendEmail = async (options) => {
+// Send email utility with retry logic
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 2000; // 2 seconds between retries
+
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+exports.sendEmail = async (options, retryCount = 0) => {
   // If email is not configured, just log and return success
   if (!transporter) {
     console.log('📧 [DEV MODE] Email would be sent to:', options.to);
@@ -56,11 +61,24 @@ exports.sendEmail = async (options) => {
     console.log('✅ Email sent successfully to:', options.to);
     return true;
   } catch (error) {
+    // Retry logic for timeout errors
+    const isTimeoutError = error.code === 'ETIMEDOUT' || error.code === 'ECONNREFUSED' || error.code === 'EHOSTUNREACH';
+    
+    if (isTimeoutError && retryCount < MAX_RETRIES) {
+      console.warn(`⏱️ Timeout error, retrying (${retryCount + 1}/${MAX_RETRIES}) in ${RETRY_DELAY}ms...`, {
+        code: error.code,
+        to: options.to
+      });
+      await delay(RETRY_DELAY);
+      return exports.sendEmail(options, retryCount + 1);
+    }
+    
     console.error('❌ Email sending failed:', {
       error: error.message,
       code: error.code,
       to: options.to,
-      subject: options.subject
+      subject: options.subject,
+      attempts: retryCount + 1
     });
     return false;
   }
