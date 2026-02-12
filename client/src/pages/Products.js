@@ -182,7 +182,7 @@ const Products = () => {
       {(category || minPrice || maxPrice || rating) && (
         <button
           onClick={clearFilters}
-          className=\"text-amazon-blue hover:text-amazon-orange text-xs sm:text-sm hover:underline transition-colors font-medium\"
+          className="text-amazon-blue hover:text-amazon-orange text-xs sm:text-sm hover:underline transition-colors font-medium"
         >
           Clear all filters
         </button>
