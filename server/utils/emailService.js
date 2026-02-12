@@ -1,122 +1,153 @@
 const nodemailer = require('nodemailer');
-
-// MULTI-PROVIDER EMAIL CONFIGURATION
-// Automatic fallback chain: Brevo → Zoho → Gmail
+const sgMail = require('@sendgrid/mail');
 
 const EMAIL_FROM = process.env.EMAIL_FROM || 'noreply@amazon-ecommerce.com';
 
-// Configure available providers
-const providers = [
-  {
-    name: 'Brevo',
-    enabled: () => process.env.SMTP_USER && process.env.SMTP_PASSWORD,
-    config: () => ({
-      host: process.env.SMTP_HOST || 'smtp-relay.brevo.com',
-      port: parseInt(process.env.SMTP_PORT) || 465,
-      secure: true,
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASSWORD
-      }
-    })
-  },
-  {
-    name: 'Zoho',
-    enabled: () => process.env.ZOHO_SMTP_USER && process.env.ZOHO_SMTP_PASS,
-    config: () => ({
-      host: 'smtp.zoho.com',
-      port: 465,
-      secure: true,
-      auth: {
-        user: process.env.ZOHO_SMTP_USER,
-        pass: process.env.ZOHO_SMTP_PASS
-      }
-    })
-  },
-  {
-    name: 'Gmail',
-    enabled: () => process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD,
-    config: () => ({
-      host: 'smtp.gmail.com',
-      port: 587,
-      secure: false,
-      requireTLS: true,
-      auth: {
-        user: process.env.GMAIL_USER,
-        pass: process.env.GMAIL_APP_PASSWORD
-      }
-    })
-  }
-];
+// Check which service to use
+const usesSendGrid = !!process.env.SENDGRID_API_KEY;
+const usesSMTP = !!(process.env.SMTP_USER && process.env.SMTP_PASSWORD);
 
-let transporters = {};
 let emailServiceReady = false;
+let transporters = {};
 
-// Initialize available providers
+// Initialize email service
 function initializeEmailService() {
-  console.log('📧 Initializing email service...');
+  console.log('📧 Initializing email service...\n');
   
-  providers.forEach(provider => {
-    if (provider.enabled()) {
-      try {
-        transporters[provider.name] = nodemailer.createTransport({
-          ...provider.config(),
-          connectionTimeout: 8000,
-          socketTimeout: 8000,
-          greetingTimeout: 3000,
-          opportunisticTLS: false,
-          pool: {
-            maxConnections: 2,
-            maxMessages: 50,
-            rateDelta: 3000,
-            rateLimit: 10
-          }
-        });
-        console.log(`   ✅ ${provider.name} configured`);
-      } catch (err) {
-        console.error(`   ❌ ${provider.name} failed: ${err.message}`);
-      }
+  // PRIORITY 1: SendGrid API (works on Render, no SMTP blocking)
+  if (usesSendGrid) {
+    try {
+      sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+      emailServiceReady = true;
+      console.log('✅ SendGrid API configured (RECOMMENDED - works on Render!)');
+      console.log('   Using HTTP API instead of SMTP - no connection timeouts\n');
+      return;
+    } catch (err) {
+      console.error('❌ SendGrid API failed:', err.message);
     }
-  });
+  }
   
-  emailServiceReady = Object.keys(transporters).length > 0;
+  // PRIORITY 2: SMTP Providers (Brevo, Zoho, Gmail) - as fallback
+  if (usesSMTP) {
+    console.log('⚠️  SendGrid not configured. Trying SMTP providers...');
+    console.log('   (Note: SMTP may be blocked on Render)\n');
+    
+    const providers = [
+      {
+        name: 'Brevo',
+        enabled: () => process.env.SMTP_USER && process.env.SMTP_PASSWORD,
+        config: () => ({
+          host: process.env.SMTP_HOST || 'smtp-relay.brevo.com',
+          port: parseInt(process.env.SMTP_PORT) || 465,
+          secure: true,
+          auth: {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASSWORD
+          }
+        })
+      },
+      {
+        name: 'Zoho',
+        enabled: () => process.env.ZOHO_SMTP_USER && process.env.ZOHO_SMTP_PASS,
+        config: () => ({
+          host: 'smtp.zoho.com',
+          port: 465,
+          secure: true,
+          auth: {
+            user: process.env.ZOHO_SMTP_USER,
+            pass: process.env.ZOHO_SMTP_PASS
+          }
+        })
+      },
+      {
+        name: 'Gmail',
+        enabled: () => process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD,
+        config: () => ({
+          host: 'smtp.gmail.com',
+          port: 587,
+          secure: false,
+          requireTLS: true,
+          auth: {
+            user: process.env.GMAIL_USER,
+            pass: process.env.GMAIL_APP_PASSWORD
+          }
+        })
+      }
+    ];
+
+    providers.forEach(provider => {
+      if (provider.enabled()) {
+        try {
+          transporters[provider.name] = nodemailer.createTransport({
+            ...provider.config(),
+            connectionTimeout: 8000,
+            socketTimeout: 8000,
+            greetingTimeout: 3000,
+            opportunisticTLS: false,
+            pool: {
+              maxConnections: 2,
+              maxMessages: 50,
+              rateDelta: 3000,
+              rateLimit: 10
+            }
+          });
+          console.log(`   ✅ ${provider.name} configured`);
+        } catch (err) {
+          console.error(`   ❌ ${provider.name} failed: ${err.message}`);
+        }
+      }
+    });
+    
+    emailServiceReady = Object.keys(transporters).length > 0;
+  }
   
-  if (emailServiceReady) {
-    console.log(`\n✅ Email service ready with ${Object.keys(transporters).length} provider(s)`);
-    console.log(`   Fallback chain: ${Object.keys(transporters).join(' → ')}`);
+  if (!emailServiceReady) {
+    console.error('\n❌ Email service NOT configured!\n');
+    console.error('RECOMMENDED: Use SendGrid API (works on Render):');
+    console.error('   1. Sign up: https://sendgrid.com (free account)');
+    console.error('   2. Create API Key at Settings → API Keys');
+    console.error('   3. Add to Render Environment:');
+    console.error('       SENDGRID_API_KEY=SG_your_key_here\n');
+    console.error('ALTERNATIVE: Use SMTP (may timeout on Render):');
+    console.error('   SMTP_USER=your-email@example.com');
+    console.error('   SMTP_PASSWORD=password');
+    console.error('   ZOHO_SMTP_USER=your-email@zoho.com');
+    console.error('   GMAIL_USER=your-email@gmail.com');
   } else {
-    console.error('\n❌ Email service FAILED - No providers configured!');
-    console.error('   Setup instructions:\n');
-    console.error('   OPTION 1: Brevo SMTP');
-    console.error('     Render Dashboard → Environment:');
-    console.error('       SMTP_HOST=smtp-relay.brevo.com');
-    console.error('       SMTP_PORT=465');
-    console.error('       SMTP_USER=your-email@example.com');
-    console.error('       SMTP_PASSWORD=xsmtpsib-...\n');
-    console.error('   OPTION 2: Zoho Mail');
-    console.error('     Render Dashboard → Environment:');
-    console.error('       ZOHO_SMTP_USER=your-email@zoho.com');
-    console.error('       ZOHO_SMTP_PASS=your-zoho-password\n');
-    console.error('   OPTION 3: Gmail');
-    console.error('     Render Dashboard → Environment:');
-    console.error('       GMAIL_USER=your-email@gmail.com');
-    console.error('       GMAIL_APP_PASSWORD=16-char-app-password');
+    console.log(`\n✅ Email service ready!\n`);
   }
 }
 
 initializeEmailService();
 
-// Try sending with automatic fallback between providers
-async function sendWithFallback(mailOptions) {
+// Send via SendGrid API
+async function sendViaAPI(mailOptions) {
+  try {
+    const msg = {
+      to: mailOptions.to,
+      from: EMAIL_FROM,
+      subject: mailOptions.subject,
+      text: mailOptions.text,
+      html: mailOptions.html
+    };
+    
+    await sgMail.send(msg);
+    return { success: true, provider: 'SendGrid', sent: true };
+  } catch (error) {
+    throw new Error(`SendGrid API: ${error.message}`);
+  }
+}
+
+// Try sending with SMTP providers
+async function sendViaSMTP(mailOptions) {
   const providerNames = Object.keys(transporters);
   
   if (providerNames.length === 0) {
-    throw new Error('No email providers configured');
+    throw new Error('No SMTP providers configured');
   }
   
   let lastError;
   
-  // Try each provider in order
   for (const providerName of providerNames) {
     const transporter = transporters[providerName];
     
@@ -129,9 +160,8 @@ async function sendWithFallback(mailOptions) {
       lastError = error;
       console.warn(`   ⚠️  ${providerName} failed: ${error.message}`);
       
-      // If auth error, don't try other providers
+      // Exit on auth error
       if (error.message.includes('AUTH') || error.message.includes('Invalid')) {
-        console.error(`   🔐 Authentication error - skipping other providers`);
         throw error;
       }
       
@@ -154,7 +184,6 @@ exports.sendEmail = async (options) => {
   }
 
   const mailOptions = {
-    from: EMAIL_FROM,
     to: options.to,
     subject: options.subject,
     text: options.text,
@@ -163,19 +192,26 @@ exports.sendEmail = async (options) => {
 
   try {
     console.log(`\n📧 Sending email to: ${options.to}`);
-    const result = await sendWithFallback(mailOptions);
+    
+    // Try SendGrid API first (works on Render)
+    if (usesSendGrid) {
+      const result = await sendViaAPI(mailOptions);
+      console.log(`✅ Email sent successfully via SendGrid!\n`);
+      return result;
+    }
+    
+    // Fall back to SMTP providers
+    const result = await sendViaSMTP(mailOptions);
     return result;
+    
   } catch (error) {
-    console.error('\n❌ Email delivery failed after all providers');
+    console.error('\n❌ Email delivery failed');
     console.error(`   Error: ${error.message}\n`);
     
-    if (error.message.includes('AUTH')) {
-      console.error('💡 Check your email credentials on Render Dashboard');
-    } else if (error.message.includes('timeout')) {
-      console.error('💡 All providers timed out. Try:');
-      console.error('   1. Add another provider (Zoho or Gmail)');
-      console.error('   2. Check Render → CPU/Network status');
-      console.error('   3. Contact email provider support');
+    if (!usesSendGrid) {
+      console.error('💡 SOLUTION: Use SendGrid API instead of SMTP');
+      console.error('   SendGrid works on Render (uses HTTP, not SMTP)');
+      console.error('   Setup: https://sendgrid.com → Create API Key → Add to Render\n');
     }
     
     return { success: false, error: error.message };
