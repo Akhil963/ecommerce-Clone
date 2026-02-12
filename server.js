@@ -3,7 +3,6 @@
 const express = require('express');
 const path = require('path');
 const compression = require('compression');
-const fs = require('fs');
 
 const app = express();
 const buildPath = path.join(__dirname, 'client', 'build');
@@ -13,33 +12,35 @@ const indexPath = path.join(buildPath, 'index.html');
 app.use(compression());
 
 // Serve static files (JS, CSS, images, etc.) with long-term caching
+// Set maxAge high for versioned assets, but let middleware handle 404s
 app.use(express.static(buildPath, {
   maxAge: '1y',
-  etag: false
+  etag: false,
+  // Don't respond with 404 - let our middleware handle it
+  setHeaders: (res, path) => {
+    // Never cache index.html
+    if (path.endsWith('index.html')) {
+      res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+    }
+  }
 }));
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// SPA catch-all: Serve index.html for all remaining requests
-// This allows React Router to handle client-side routing
-app.all('*', (req, res) => {
-  // Check if the file actually exists in the build directory
-  const resolvedPath = path.join(buildPath, req.url.split('?')[0]);
-  
-  // If it's a real file, 404
-  if (fs.existsSync(resolvedPath) && fs.statSync(resolvedPath).isFile()) {
-    return res.status(404).send('Not Found');
-  }
-  
-  // Otherwise, serve index.html for client-side routing
+// SPA fallback middleware - catch all routes and serve index.html
+// This must come AFTER static middleware to catch unmatched routes
+app.use((req, res) => {
+  console.log(`📍 SPA Route: ${req.method} ${req.path}`);
   res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
   res.sendFile(indexPath, (err) => {
     if (err) {
-      console.error('Error serving index.html:', err.message);
-      res.status(500).send('Internal Server Error');
+      console.error(`❌ Error serving index.html for ${req.path}:`, err.message);
+      res.status(500).send('Internal Server Error - Could not load application');
     }
   });
 });
