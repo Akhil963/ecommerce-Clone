@@ -10,30 +10,57 @@ const EMAIL_FROM = process.env.EMAIL_FROM || 'noreply@amazon-ecommerce.com';
 let transporter = null;
 let emailServiceReady = false;
 
-// Initialize SMTP transporter with extended timeouts for production
+// Initialize SMTP transporter with optimized timeouts for production
 if (SMTP_HOST && SMTP_USER && SMTP_PASSWORD) {
   try {
+    // Validate credentials format
+    if (!SMTP_USER.includes('@') && !SMTP_USER.includes('apikey')) {
+      console.warn('⚠️  Warning: SMTP_USER might be invalid. Should be email address or "apikey"');
+    }
+    
+    if (SMTP_PASSWORD.length < 10) {
+      console.warn('⚠️  Warning: SMTP_PASSWORD seems too short. Brevo passwords are usually 60+ characters');
+    }
+
     transporter = nodemailer.createTransport({
       host: SMTP_HOST,
       port: SMTP_PORT,
-      secure: false,
-      requireTLS: true,
+      secure: false,           // Use STARTTLS (not SSL)
+      requireTLS: true,        // Force TLS upgrade
       auth: {
         user: SMTP_USER,
         pass: SMTP_PASSWORD
       },
-      connectionTimeout: 60000,    // 60 seconds (increased from 30s)
-      socketTimeout: 60000,        // 60 seconds (increased from 30s)
+      // OPTIMIZED TIMEOUTS: Reduced for faster failure detection
+      connectionTimeout: 30000,   // 30 seconds (was 60s - reduced for faster retry)
+      socketTimeout: 30000,       // 30 seconds (was 60s - reduced for faster retry)
+      greetingTimeout: 5000,      // 5 seconds for initial connection greeting
+      
+      // CONNECTION POOL: Optimized for email service
       pool: {
-        maxConnections: 2,
-        maxMessages: 100,
-        rateDelta: 2000,
-        rateLimit: 14
+        maxConnections: 5,      // Increased from 2 to handle multiple simultaneous sends
+        maxMessages: 100,       // Messages per connection before reconnect
+        rateDelta: 2000,        // Check rate limit every 2 seconds
+        rateLimit: 20           // Max 20 emails per rateDelta period (Brevo: 300/day = ~12/hour)
+      },
+      
+      // LOGGING: Better debugging
+      logger: process.env.DEBUG_EMAIL === 'true',  // Set DEBUG_EMAIL=true to see SMTP logs
+      debug: process.env.DEBUG_EMAIL === 'true'
+    });
+
+    // Verify connection immediately
+    transporter.verify((err, success) => {
+      if (err) {
+        console.error('❌ SMTP Verification Failed:', err.message);
+        console.error('   Check your SMTP credentials on Render Dashboard');
+        emailServiceReady = false;
+      } else if (success) {
+        emailServiceReady = true;
+        console.log(`✅ Email service initialized and verified (SMTP: ${SMTP_HOST}:${SMTP_PORT})`);
       }
     });
     
-    emailServiceReady = true;
-    console.log(`✅ Email service initialized (SMTP: ${SMTP_HOST}:${SMTP_PORT})`);
   } catch (err) {
     console.error('❌ SMTP initialization error:', err.message);
     emailServiceReady = false;
@@ -44,10 +71,12 @@ if (SMTP_HOST && SMTP_USER && SMTP_PASSWORD) {
   if (!SMTP_USER) missing.push('SMTP_USER');
   if (!SMTP_PASSWORD) missing.push('SMTP_PASSWORD');
   console.error(`❌ Email service FAILED to initialize. Missing environment variables: ${missing.join(', ')}`);
+  console.error('   ℹ️  Required: SMTP_HOST, SMTP_USER, SMTP_PASSWORD');
   console.error('   ℹ️  Set these in Render Dashboard → Environment Variables');
+  console.error('   ℹ️  For Brevo: SMTP_USER=your-email@xyz.com, SMTP_PASSWORD=xsmtpsib-...');
 }
 
-// Retry logic with exponential backoff
+// Retry logic with exponential backoff - smarter handling of different error types
 const sendEmailWithRetry = async (mailOptions, maxRetries = 3, delayMs = 2000) => {
   let lastError;
   
@@ -58,16 +87,25 @@ const sendEmailWithRetry = async (mailOptions, maxRetries = 3, delayMs = 2000) =
     } catch (error) {
       lastError = error;
       
-      // Log the attempt
       const isLastAttempt = attempt === maxRetries - 1;
-      const waitTime = delayMs * Math.pow(2, attempt); // Exponential backoff
+      const waitTime = delayMs * Math.pow(2, attempt); // Exponential backoff: 2s, 4s, 8s
+      
+      // Classify error types
+      const errorCode = error?.code || error?.message || 'UNKNOWN';
+      const errorClassification = classifyEmailError(errorCode);
       
       console.warn(`⚠️  Email send attempt ${attempt + 1}/${maxRetries} failed for ${mailOptions.to}:`, 
-        error.code || error.message);
+        `[${errorClassification}] ${error.code || error.message}`);
+      
+      // Don't retry on authentication or permanent errors
+      if (errorClassification === 'AUTH' || errorClassification === 'PERMANENT') {
+        console.error(`❌ Not retrying - ${errorClassification} error (permanent failure)`);
+        throw error;
+      }
       
       // If it's the last attempt, don't wait
       if (!isLastAttempt) {
-        console.log(`   Retrying in ${waitTime}ms...`);
+        console.log(`   ↻ Retrying in ${waitTime}ms...`);
         await new Promise(resolve => setTimeout(resolve, waitTime));
       }
     }
@@ -77,16 +115,47 @@ const sendEmailWithRetry = async (mailOptions, maxRetries = 3, delayMs = 2000) =
   throw lastError;
 };
 
+// Helper function to classify email errors
+const classifyEmailError = (errorCode) => {
+  const str = String(errorCode).toUpperCase();
+  
+  if (str.includes('AUTH') || str.includes('INVALID') || str.includes('401') || str.includes('403')) {
+    return 'AUTH';  // Authentication error - don't retry
+  }
+  if (str.includes('ENOTFOUND') || str.includes('ENETUNREACH') || str.includes('ECONNREFUSED')) {
+    return 'NETWORK';  // Network error - retry
+  }
+  if (str.includes('ETIMEDOUT') || str.includes('ESOCKETTIMEDOUT') || str.includes('EHOSTUNREACH')) {
+    return 'TIMEOUT';  // Connection timeout - retry
+  }
+  if (str.includes('EHELO') || str.includes('EGREETING')) {
+    return 'SMTP_GREETING';  // SMTP protocol error - retry
+  }
+  if (str.includes('550') || str.includes('552') || str.includes('421')) {
+    return 'PERMANENT';  // Server rejection - don't retry
+  }
+  
+  return 'TRANSIENT';  // Unknown - assume transient and retry
+};
+
 // Send email using SMTP
 exports.sendEmail = async (options) => {
   if (!emailServiceReady || !transporter) {
     const errorMsg = `Email service not configured. Required: SMTP_USER, SMTP_PASSWORD, SMTP_HOST`;
     console.error('❌', errorMsg);
-    console.error('   ℹ️  Add these to Render Dashboard Environment Variables');
+    console.error('   1️⃣  Go to: Render Dashboard → Select your API service');
+    console.error('   2️⃣  Click: Environment (in left sidebar)');
+    console.error('   3️⃣  Add these variables:');
+    console.error('       SMTP_HOST = smtp-relay.brevo.com');
+    console.error('       SMTP_PORT = 587');
+    console.error('       SMTP_USER = your-email@example.com (from Brevo)');
+    console.error('       SMTP_PASSWORD = xsmtpsib-... (from Brevo SMTP settings)');
+    console.error('   4️⃣  Save and wait for redeploy');
     return {
       success: false,
       error: errorMsg,
-      mode: 'no-config'
+      mode: 'not-configured',
+      debug: 'Email service not initialized at startup'
     };
   }
 
@@ -101,22 +170,35 @@ exports.sendEmail = async (options) => {
 
     const response = await sendEmailWithRetry(mailOptions);
 
-    console.log(`✅ Email sent to: ${options.to}`);
+    console.log(`✅ Email sent to: ${options.to} (Message ID: ${response.messageId})`);
     return { success: true, messageId: response.messageId };
   } catch (error) {
     const errorMessage = error?.message || JSON.stringify(error) || 'Unknown error';
     const errorCode = error?.code || 'UNKNOWN';
+    const errorClassification = classifyEmailError(errorCode);
     
-    console.error('❌ Email send failed after retries:', {
+    console.error('❌ Email send failed after all retries:', {
       to: options.to,
       subject: options.subject,
-      error: errorMessage,
+      errorType: errorClassification,
       code: errorCode,
+      message: errorMessage,
       timestamp: new Date().toISOString()
     });
     
-    // Still return success to not block registration, but log the error
-    return { success: false, error: errorMessage, code: errorCode };
+    // Provide actionable diagnostic for different error types
+    if (errorClassification === 'AUTH') {
+      console.error('   🔐 This is an AUTHENTICATION error');
+      console.error('   → Check SMTP_USER and SMTP_PASSWORD on Render Dashboard');
+      console.error('   → Verify credentials with your SMTP provider');
+    } else if (errorClassification === 'TIMEOUT' || errorClassification === 'NETWORK') {
+      console.error('   🌐 This is a NETWORK/TIMEOUT error');
+      console.error('   → If retries succeeded eventually, this is normal');
+      console.error('   → If all retries failed: check if Render can reach smtp-relay.brevo.com:587');
+    }
+    
+    // Still return to not block registration, but log the error
+    return { success: false, error: errorMessage, code: errorCode, type: errorClassification };
   }
 };
 
