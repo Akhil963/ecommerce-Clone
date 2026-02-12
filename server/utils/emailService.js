@@ -9,15 +9,24 @@ const EMAILJS_PRIVATE_KEY = process.env.EMAILJS_PRIVATE_KEY;
 let emailServiceReady = false;
 
 // Initialize EmailJS
-if (EMAILJS_SERVICE_ID && EMAILJS_PUBLIC_KEY && EMAILJS_PRIVATE_KEY) {
-  emailjs.init({
-    publicKey: EMAILJS_PUBLIC_KEY,
-    privateKey: EMAILJS_PRIVATE_KEY
-  });
-  emailServiceReady = true;
-  console.log('✅ EmailJS service initialized');
+if (EMAILJS_SERVICE_ID && EMAILJS_PUBLIC_KEY && EMAILJS_PRIVATE_KEY && EMAILJS_TEMPLATE_ID) {
+  try {
+    emailjs.init({
+      publicKey: EMAILJS_PUBLIC_KEY,
+      privateKey: EMAILJS_PRIVATE_KEY
+    });
+    emailServiceReady = true;
+    console.log('✅ EmailJS service initialized');
+  } catch (err) {
+    console.error('❌ EmailJS initialization error:', err);
+  }
 } else {
-  console.warn('⚠️  EmailJS not configured - check EMAILJS_SERVICE_ID, EMAILJS_PUBLIC_KEY, EMAILJS_PRIVATE_KEY');
+  const missing = [];
+  if (!EMAILJS_SERVICE_ID) missing.push('EMAILJS_SERVICE_ID');
+  if (!EMAILJS_PUBLIC_KEY) missing.push('EMAILJS_PUBLIC_KEY');
+  if (!EMAILJS_PRIVATE_KEY) missing.push('EMAILJS_PRIVATE_KEY');
+  if (!EMAILJS_TEMPLATE_ID) missing.push('EMAILJS_TEMPLATE_ID');
+  console.warn('⚠️  EmailJS not configured. Missing:', missing.join(', '));
 }
 
 // Send email using EmailJS
@@ -47,12 +56,18 @@ exports.sendEmail = async (options) => {
     console.log(`✅ Email sent to: ${options.to}`);
     return { success: true, messageId: response.status };
   } catch (error) {
+    const errorMessage = error?.message || JSON.stringify(error) || 'Unknown error';
+    const errorCode = error?.code || 'UNKNOWN';
+    
     console.error('❌ Email send failed:', {
       to: options.to,
       subject: options.subject,
-      error: error.message
+      error: errorMessage,
+      code: errorCode,
+      fullError: error
     });
-    return { success: false, error: error.message };
+    
+    return { success: false, error: errorMessage };
   }
 };
 
