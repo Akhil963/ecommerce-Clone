@@ -5,11 +5,12 @@ const SMTP_HOST = process.env.SMTP_HOST;
 const SMTP_PORT = process.env.SMTP_PORT || 587;
 const SMTP_USER = process.env.SMTP_USER;
 const SMTP_PASSWORD = process.env.SMTP_PASSWORD;
+const EMAIL_FROM = process.env.EMAIL_FROM || 'noreply@amazon-ecommerce.com';
 
 let transporter = null;
 let emailServiceReady = false;
 
-// Initialize SMTP transporter
+// Initialize SMTP transporter with extended timeouts for production
 if (SMTP_HOST && SMTP_USER && SMTP_PASSWORD) {
   try {
     transporter = nodemailer.createTransport({
@@ -21,8 +22,8 @@ if (SMTP_HOST && SMTP_USER && SMTP_PASSWORD) {
         user: SMTP_USER,
         pass: SMTP_PASSWORD
       },
-      connectionTimeout: 30000,
-      socketTimeout: 30000,
+      connectionTimeout: 60000,    // 60 seconds (increased from 30s)
+      socketTimeout: 60000,        // 60 seconds (increased from 30s)
       pool: {
         maxConnections: 2,
         maxMessages: 100,
@@ -32,40 +33,73 @@ if (SMTP_HOST && SMTP_USER && SMTP_PASSWORD) {
     });
     
     emailServiceReady = true;
-    console.log(`✅ Email service initialized (SMTP: ${SMTP_HOST})`);
+    console.log(`✅ Email service initialized (SMTP: ${SMTP_HOST}:${SMTP_PORT})`);
   } catch (err) {
     console.error('❌ SMTP initialization error:', err.message);
+    emailServiceReady = false;
   }
 } else {
   const missing = [];
   if (!SMTP_HOST) missing.push('SMTP_HOST');
   if (!SMTP_USER) missing.push('SMTP_USER');
   if (!SMTP_PASSWORD) missing.push('SMTP_PASSWORD');
-  console.warn('⚠️  Email service not configured. Missing:', missing.join(', '));
+  console.error(`❌ Email service FAILED to initialize. Missing environment variables: ${missing.join(', ')}`);
+  console.error('   ℹ️  Set these in Render Dashboard → Environment Variables');
 }
+
+// Retry logic with exponential backoff
+const sendEmailWithRetry = async (mailOptions, maxRetries = 3, delayMs = 2000) => {
+  let lastError;
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const response = await transporter.sendMail(mailOptions);
+      return response;
+    } catch (error) {
+      lastError = error;
+      
+      // Log the attempt
+      const isLastAttempt = attempt === maxRetries - 1;
+      const waitTime = delayMs * Math.pow(2, attempt); // Exponential backoff
+      
+      console.warn(`⚠️  Email send attempt ${attempt + 1}/${maxRetries} failed for ${mailOptions.to}:`, 
+        error.code || error.message);
+      
+      // If it's the last attempt, don't wait
+      if (!isLastAttempt) {
+        console.log(`   Retrying in ${waitTime}ms...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      }
+    }
+  }
+  
+  // All retries failed
+  throw lastError;
+};
 
 // Send email using SMTP
 exports.sendEmail = async (options) => {
   if (!emailServiceReady || !transporter) {
-    console.log('📧 [NO EMAIL CONFIG] Would send to:', options.to, '| Subject:', options.subject);
+    const errorMsg = `Email service not configured. Required: SMTP_USER, SMTP_PASSWORD, SMTP_HOST`;
+    console.error('❌', errorMsg);
+    console.error('   ℹ️  Add these to Render Dashboard Environment Variables');
     return {
-      success: true,
-      message: 'Email service not configured'
+      success: false,
+      error: errorMsg,
+      mode: 'no-config'
     };
   }
 
   try {
-    const fromEmail = process.env.EMAIL_FROM || `"${process.env.EMAIL_FROM_NAME || 'Amazon Ecommerce'}" <${SMTP_USER}>`;
-    
     const mailOptions = {
-      from: fromEmail,
+      from: EMAIL_FROM,
       to: options.to,
       subject: options.subject,
       text: options.text,
       html: options.html
     };
 
-    const response = await transporter.sendMail(mailOptions);
+    const response = await sendEmailWithRetry(mailOptions);
 
     console.log(`✅ Email sent to: ${options.to}`);
     return { success: true, messageId: response.messageId };
@@ -73,14 +107,16 @@ exports.sendEmail = async (options) => {
     const errorMessage = error?.message || JSON.stringify(error) || 'Unknown error';
     const errorCode = error?.code || 'UNKNOWN';
     
-    console.error('❌ Email send failed:', {
+    console.error('❌ Email send failed after retries:', {
       to: options.to,
       subject: options.subject,
       error: errorMessage,
-      code: errorCode
+      code: errorCode,
+      timestamp: new Date().toISOString()
     });
     
-    return { success: false, error: errorMessage };
+    // Still return success to not block registration, but log the error
+    return { success: false, error: errorMessage, code: errorCode };
   }
 };
 
