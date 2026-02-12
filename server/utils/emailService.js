@@ -1,37 +1,52 @@
-const emailjs = require('@emailjs/nodejs');
+const nodemailer = require('nodemailer');
 
-// EmailJS Configuration
-const EMAILJS_SERVICE_ID = process.env.EMAILJS_SERVICE_ID;
-const EMAILJS_TEMPLATE_ID = process.env.EMAILJS_TEMPLATE_ID;
-const EMAILJS_PUBLIC_KEY = process.env.EMAILJS_PUBLIC_KEY;
-const EMAILJS_PRIVATE_KEY = process.env.EMAILJS_PRIVATE_KEY;
+// SMTP Configuration
+const SMTP_HOST = process.env.SMTP_HOST;
+const SMTP_PORT = process.env.SMTP_PORT || 587;
+const SMTP_USER = process.env.SMTP_USER;
+const SMTP_PASSWORD = process.env.SMTP_PASSWORD;
 
+let transporter = null;
 let emailServiceReady = false;
 
-// Initialize EmailJS
-if (EMAILJS_SERVICE_ID && EMAILJS_PUBLIC_KEY && EMAILJS_PRIVATE_KEY && EMAILJS_TEMPLATE_ID) {
+// Initialize SMTP transporter
+if (SMTP_HOST && SMTP_USER && SMTP_PASSWORD) {
   try {
-    emailjs.init({
-      publicKey: EMAILJS_PUBLIC_KEY,
-      privateKey: EMAILJS_PRIVATE_KEY
+    transporter = nodemailer.createTransport({
+      host: SMTP_HOST,
+      port: SMTP_PORT,
+      secure: false,
+      requireTLS: true,
+      auth: {
+        user: SMTP_USER,
+        pass: SMTP_PASSWORD
+      },
+      connectionTimeout: 30000,
+      socketTimeout: 30000,
+      pool: {
+        maxConnections: 2,
+        maxMessages: 100,
+        rateDelta: 2000,
+        rateLimit: 14
+      }
     });
+    
     emailServiceReady = true;
-    console.log('✅ EmailJS service initialized');
+    console.log(`✅ Email service initialized (SMTP: ${SMTP_HOST})`);
   } catch (err) {
-    console.error('❌ EmailJS initialization error:', err);
+    console.error('❌ SMTP initialization error:', err.message);
   }
 } else {
   const missing = [];
-  if (!EMAILJS_SERVICE_ID) missing.push('EMAILJS_SERVICE_ID');
-  if (!EMAILJS_PUBLIC_KEY) missing.push('EMAILJS_PUBLIC_KEY');
-  if (!EMAILJS_PRIVATE_KEY) missing.push('EMAILJS_PRIVATE_KEY');
-  if (!EMAILJS_TEMPLATE_ID) missing.push('EMAILJS_TEMPLATE_ID');
-  console.warn('⚠️  EmailJS not configured. Missing:', missing.join(', '));
+  if (!SMTP_HOST) missing.push('SMTP_HOST');
+  if (!SMTP_USER) missing.push('SMTP_USER');
+  if (!SMTP_PASSWORD) missing.push('SMTP_PASSWORD');
+  console.warn('⚠️  Email service not configured. Missing:', missing.join(', '));
 }
 
-// Send email using EmailJS
+// Send email using SMTP
 exports.sendEmail = async (options) => {
-  if (!emailServiceReady) {
+  if (!emailServiceReady || !transporter) {
     console.log('📧 [NO EMAIL CONFIG] Would send to:', options.to, '| Subject:', options.subject);
     return {
       success: true,
@@ -40,21 +55,20 @@ exports.sendEmail = async (options) => {
   }
 
   try {
-    const templateParams = {
-      to_email: options.to,
+    const fromEmail = process.env.EMAIL_FROM || `"${process.env.EMAIL_FROM_NAME || 'Amazon Ecommerce'}" <${SMTP_USER}>`;
+    
+    const mailOptions = {
+      from: fromEmail,
+      to: options.to,
       subject: options.subject,
-      html_content: options.html || options.text,
-      to_name: options.to_name || 'Customer'
+      text: options.text,
+      html: options.html
     };
 
-    const response = await emailjs.send(
-      EMAILJS_SERVICE_ID,
-      EMAILJS_TEMPLATE_ID,
-      templateParams
-    );
+    const response = await transporter.sendMail(mailOptions);
 
     console.log(`✅ Email sent to: ${options.to}`);
-    return { success: true, messageId: response.status };
+    return { success: true, messageId: response.messageId };
   } catch (error) {
     const errorMessage = error?.message || JSON.stringify(error) || 'Unknown error';
     const errorCode = error?.code || 'UNKNOWN';
@@ -63,8 +77,7 @@ exports.sendEmail = async (options) => {
       to: options.to,
       subject: options.subject,
       error: errorMessage,
-      code: errorCode,
-      fullError: error
+      code: errorCode
     });
     
     return { success: false, error: errorMessage };

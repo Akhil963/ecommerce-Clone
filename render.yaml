@@ -40,14 +40,18 @@ services:
         sync: false
       - key: TWILIO_PHONE_NUMBER
         sync: false
-      - key: EMAILJS_SERVICE_ID
+      - key: SMTP_HOST
+        value: smtp-relay.brevo.com
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_USER
         sync: false
-      - key: EMAILJS_TEMPLATE_ID
+      - key: SMTP_PASSWORD
         sync: false
-      - key: EMAILJS_PUBLIC_KEY
-        sync: false
-      - key: EMAILJS_PRIVATE_KEY
-        sync: false
+      - key: EMAIL_FROM
+        value: Amazon Ecommerce <noreply@ecommerce.com>
+      - key: EMAIL_FROM_NAME
+        value: Amazon Ecommerce
       - key: CLIENT_URL
         value: https://amazon-clone-frontend-eqts.onrender.com
 
