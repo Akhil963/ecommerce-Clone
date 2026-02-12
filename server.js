@@ -18,30 +18,30 @@ app.use(express.static(buildPath, {
   etag: false
 }));
 
-// Special handling for index.html - never cache
-app.get('/', (req, res) => {
-  res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-  res.sendFile(indexPath);
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok' });
 });
 
 // SPA catch-all: Serve index.html for all remaining requests
 // This allows React Router to handle client-side routing
-app.use((req, res, next) => {
-  // Only serve index.html for requests that don't have file extensions
-  // This way /api/*, /uploads/*, and other actual files still work
-  if (path.extname(req.url) === '') {
-    // No file extension - this is a route, serve index.html
-    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-    res.sendFile(indexPath, (err) => {
-      if (err) {
-        console.error('Error serving index.html:', err.message);
-        res.status(500).send('Internal Server Error');
-      }
-    });
-  } else {
-    // Has file extension - let Express handle 404
-    res.status(404).send('Not Found');
+app.all('*', (req, res) => {
+  // Check if the file actually exists in the build directory
+  const resolvedPath = path.join(buildPath, req.url.split('?')[0]);
+  
+  // If it's a real file, 404
+  if (fs.existsSync(resolvedPath) && fs.statSync(resolvedPath).isFile()) {
+    return res.status(404).send('Not Found');
   }
+  
+  // Otherwise, serve index.html for client-side routing
+  res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.sendFile(indexPath, (err) => {
+    if (err) {
+      console.error('Error serving index.html:', err.message);
+      res.status(500).send('Internal Server Error');
+    }
+  });
 });
 
 const PORT = process.env.PORT || 3000;
