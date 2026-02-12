@@ -29,6 +29,7 @@
   "author": "Developer",
   "license": "MIT",
   "dependencies": {
+    "@emailjs/nodejs": "^4.1.0",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",
