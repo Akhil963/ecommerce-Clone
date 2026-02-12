@@ -1,8 +1,8 @@
 const nodemailer = require('nodemailer');
 
-// SMTP Configuration - Support multiple configurations
+// SMTP Configuration
 const SMTP_HOST = process.env.SMTP_HOST;
-const SMTP_PORT = process.env.SMTP_PORT || 587;
+const SMTP_PORT = process.env.SMTP_PORT || 465;
 const SMTP_USER = process.env.SMTP_USER;
 const SMTP_PASSWORD = process.env.SMTP_PASSWORD;
 const EMAIL_FROM = process.env.EMAIL_FROM || 'noreply@amazon-ecommerce.com';
@@ -10,79 +10,52 @@ const EMAIL_FROM = process.env.EMAIL_FROM || 'noreply@amazon-ecommerce.com';
 let transporter = null;
 let emailServiceReady = false;
 
-// FALLBACK CONFIGURATIONS - If primary fails, try these
-const BACKUP_CONFIGS = [
-  {
-    host: 'smtp-relay.brevo.com',
-    port: 465,  // Implicit SSL (alternative to 587)
-    secure: true,
-    label: 'Brevo SMTP (SSL Port 465)'
-  },
-  {
-    host: 'smtp.gmail.com',
-    port: 587,
-    secure: false,
-    label: 'Gmail SMTP (Port 587)',
-    requiresAppPassword: true
-  }
-];
-
-// Initialize SMTP transporter with multiple fallback options
+// Initialize SMTP transporter - production optimized
 function initializeEmailService() {
   if (SMTP_HOST && SMTP_USER && SMTP_PASSWORD) {
     try {
-      // Validate credentials format
-      if (!SMTP_USER.includes('@') && !SMTP_USER.includes('apikey')) {
-        console.warn('⚠️  Warning: SMTP_USER might be invalid. Should be email address or "apikey"');
-      }
+      console.log(`📧 Initializing email service...`);
+      console.log(`   Host: ${SMTP_HOST}:${SMTP_PORT}`);
+      console.log(`   User: ${SMTP_USER}`);
       
-      if (SMTP_PASSWORD.length < 10) {
-        console.warn('⚠️  Warning: SMTP_PASSWORD seems too short. Brevo passwords are usually 60+ characters');
-      }
-
-      const config = {
+      // Determine security based on port
+      const isSSL = SMTP_PORT == 465;
+      
+      transporter = nodemailer.createTransport({
         host: SMTP_HOST,
         port: parseInt(SMTP_PORT),
-        secure: SMTP_PORT == 465,  // SSL for port 465, TLS for 587
-        requireTLS: SMTP_PORT == 587,  // Force TLS for port 587
+        secure: isSSL,           // SSL for 465, TLS for 587
+        requireTLS: !isSSL,      // Require TLS for 587
         auth: {
           user: SMTP_USER,
           pass: SMTP_PASSWORD
         },
-        // OPTIMIZED TIMEOUTS: Aggressive for network issues
-        connectionTimeout: 10000,   // 10 seconds (reduced from 15s)
-        socketTimeout: 10000,       // 10 seconds
-        greetingTimeout: 5000,      // 5 seconds for SMTP greeting
+        // OPTIMIZED FOR RENDER: Aggressive but reasonable timeouts
+        connectionTimeout: 8000,    // 8 seconds
+        socketTimeout: 8000,        // 8 seconds
+        greetingTimeout: 3000,      // 3 seconds
         
-        // CONNECTION POOL: Conservative for stability
+        // CONNECTION POOL: Conservative for reliability
         pool: {
-          maxConnections: 3,
+          maxConnections: 2,       // Keep connections low
           maxMessages: 50,
           rateDelta: 3000,
-          rateLimit: 10
+          rateLimit: 10            // ~8 emails per second max
         },
         
-        // LOGGING: Better debugging
+        // DISABLE OPPORTUNISTIC TLS: Some servers are slow to respond
+        opportunisticTLS: false,
+        
+        // LOGGING
         logger: process.env.DEBUG_EMAIL === 'true',
         debug: process.env.DEBUG_EMAIL === 'true'
-      };
-
-      transporter = nodemailer.createTransport(config);
+      });
+      
       emailServiceReady = true;
-      
-      console.log(`✅ Email service initialized`);
-      console.log(`   Host: ${SMTP_HOST}:${SMTP_PORT}`);
-      console.log(`   User: ${SMTP_USER}`);
-      console.log(`   Security: ${SMTP_PORT == 465 ? 'SSL' : 'STARTTLS'}`);
-      console.log(`   Mode: ${process.env.NODE_ENV}`);
-      console.log(`   ℹ️  Connection will be verified on first email send`);
-      
-      if (SMTP_PORT != 587) {
-        console.log(`   ℹ️  Using non-standard port ${SMTP_PORT} - may be needed if port 587 is blocked`);
-      }
+      console.log(`✅ Email service ready (${isSSL ? 'SSL' : 'STARTTLS'} on port ${SMTP_PORT})`);
       
     } catch (err) {
-      console.error('❌ SMTP initialization error:', err.message);
+      console.error('❌ Email service initialization failed:', err.message);
       emailServiceReady = false;
     }
   } else {
@@ -90,229 +63,85 @@ function initializeEmailService() {
     if (!SMTP_HOST) missing.push('SMTP_HOST');
     if (!SMTP_USER) missing.push('SMTP_USER');
     if (!SMTP_PASSWORD) missing.push('SMTP_PASSWORD');
-    console.error(`❌ Email service FAILED to initialize. Missing environment variables: ${missing.join(', ')}`);
-    console.error('   Setup Instructions:');
-    console.error('   1. Go to Render Dashboard → Select your API service');
-    console.error('   2. Click Environment (left sidebar)');
-    console.error('   3. Add these variables:');
-    console.error('       SMTP_HOST=smtp-relay.brevo.com');
-    console.error('       SMTP_PORT=587 (or 465 if 587 times out)');
-    console.error('       SMTP_USER=your-email@example.com');
-    console.error('       SMTP_PASSWORD=xsmtpsib-...');
+    console.error(`❌ Email service not configured. Missing: ${missing.join(', ')}`);
   }
 }
 
-// Initialize on module load
 initializeEmailService();
-
-// Retry logic with exponential backoff - optimized for network issues
-const sendEmailWithRetry = async (mailOptions, maxRetries = 3, delayMs = 1000) => {
-  let lastError;
-  const startTime = Date.now();
-  
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      console.log(`📧 Email send attempt ${attempt + 1}/${maxRetries} for ${mailOptions.to}...`);
-      const response = await transporter.sendMail(mailOptions);
-      const duration = Date.now() - startTime;
-      console.log(`✅ Email sent successfully! (took ${duration}ms)`);
-      return response;
-    } catch (error) {
-      lastError = error;
-      
-      const isLastAttempt = attempt === maxRetries - 1;
-      const waitTime = delayMs * Math.pow(2, attempt); // 1s, 2s, 4s
-      const errorCode = error?.code || error?.message || 'UNKNOWN';
-      const errorClassification = classifyEmailError(errorCode);
-      
-      console.warn(`⚠️  Email send attempt ${attempt + 1}/${maxRetries} failed for ${mailOptions.to}: [${errorClassification}] ${error.code || error.message}`);
-      
-      // Don't retry on authentication errors
-      if (errorClassification === 'AUTH' || errorClassification === 'PERMANENT') {
-        console.error(`❌ Not retrying - This is a ${errorClassification} error (permanent failure)`);
-        break;  // Exit retry loop on permanent errors
-      }
-      
-      // If it's the last attempt, don't wait
-      if (!isLastAttempt) {
-        console.log(`   ↻ Retrying in ${waitTime}ms...`);
-        await new Promise(resolve => setTimeout(resolve, waitTime));
-      }
-    }
-  }
-  
-  // All retries failed
-  throw lastError;
-};
-
-// Helper function to classify email errors
-const classifyEmailError = (errorCode) => {
-  const str = String(errorCode).toUpperCase();
-  
-  if (str.includes('AUTH') || str.includes('INVALID') || str.includes('401') || str.includes('403')) {
-    return 'AUTH';  // Authentication error - don't retry
-  }
-  if (str.includes('ENOTFOUND') || str.includes('ENETUNREACH') || str.includes('ECONNREFUSED')) {
-    return 'NETWORK';  // Network error - retry
-  }
-  if (str.includes('ETIMEDOUT') || str.includes('ESOCKETTIMEDOUT') || str.includes('EHOSTUNREACH')) {
-    return 'TIMEOUT';  // Connection timeout - retry
-  }
-  if (str.includes('EHELO') || str.includes('EGREETING')) {
-    return 'SMTP_GREETING';  // SMTP protocol error - retry
-  }
-  if (str.includes('550') || str.includes('552') || str.includes('421')) {
-    return 'PERMANENT';  // Server rejection - don't retry
-  }
-  
-  return 'TRANSIENT';  // Unknown - assume transient and retry
-};
-
-// First-email flag to perform connection check
-let connectionVerified = false;
-let fallbackAttempted = false;
-
-// Send email using SMTP - with automatic fallback to port 465
 exports.sendEmail = async (options) => {
   if (!emailServiceReady || !transporter) {
-    const errorMsg = `Email service not configured. Required: SMTP_USER, SMTP_PASSWORD, SMTP_HOST`;
-    console.error('❌', errorMsg);
-    console.error('   Setup Instructions:');
-    console.error('   1. Go to Render Dashboard → Select your API service');
-    console.error('   2. Click Environment (left sidebar)');
-    console.error('   3. Add these variables:');
-    console.error('       SMTP_HOST=smtp-relay.brevo.com');
-    console.error('       SMTP_PORT=587');
-    console.error('       SMTP_USER=your-brevo-email@example.com');
-    console.error('       SMTP_PASSWORD=xsmtpsib-...');
-    return {
-      success: false,
-      error: errorMsg,
-      mode: 'not-configured'
-    };
+    console.error('❌ Email service not configured');
+    return { success: false, error: 'Email service not configured' };
   }
 
+  const mailOptions = {
+    from: EMAIL_FROM,
+    to: options.to,
+    subject: options.subject,
+    text: options.text,
+    html: options.html
+  };
+
   try {
-    // Verify connection on first email send (lazy verification)
-    if (!connectionVerified) {
-      console.log('🔗 Attempting SMTP connection verification...');
-      await new Promise((resolve) => {
-        const verifyTimeout = setTimeout(() => {
-          console.warn('⚠️  Connection verification timed out (will attempt send anyway)');
-          resolve();
-        }, 8000);  // 8 second timeout for verification
-        
-        transporter.verify((err, success) => {
-          clearTimeout(verifyTimeout);
-          if (err) {
-            console.warn(`⚠️  Connection verification failed: ${err.message}`);
-            console.warn('   → Will attempt send anyway (connection may work on actual send)');
-            connectionVerified = false;
-          } else if (success) {
-            console.log(`✅ SMTP connection verified successfully!`);
-            connectionVerified = true;
-          }
-          resolve();
-        });
-      });
-    }
-
-    const mailOptions = {
-      from: EMAIL_FROM,
-      to: options.to,
-      subject: options.subject,
-      text: options.text,
-      html: options.html
-    };
-
-    const response = await sendEmailWithRetry(mailOptions);
-    return { success: true, messageId: response.messageId };
+    console.log(`📧 Sending to: ${options.to}`);
     
-  } catch (error) {
-    const errorMessage = error?.message || JSON.stringify(error) || 'Unknown error';
-    const errorCode = error?.code || 'UNKNOWN';
-    const errorClassification = classifyEmailError(errorCode);
-    
-    console.error('❌ Email send failed after all retries:', {
-      to: options.to,
-      subject: options.subject,
-      errorType: errorClassification,
-      code: errorCode,
-      message: errorMessage,
-      timestamp: new Date().toISOString()
-    });
-    
-    // AUTOMATIC FALLBACK: If port 587 times out, try port 465
-    if ((errorClassification === 'TIMEOUT' || errorClassification === 'NETWORK') && 
-        SMTP_PORT == 587 && 
-        !fallbackAttempted) {
-      
-      console.log('\n🔄 ATTEMPTING AUTOMATIC FALLBACK TO PORT 465 (SSL)...');
-      console.log('   Port 587 (STARTTLS) timed out. Trying port 465 (SSL)...\n');
-      
+    // Try 3 times with primary SMTP
+    for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        // Create new transporter with port 465
-        const fallbackTransporter = nodemailer.createTransport({
-          host: SMTP_HOST,
-          port: 465,
-          secure: true,  // SSL
-          auth: {
-            user: SMTP_USER,
-            pass: SMTP_PASSWORD
-          },
-          connectionTimeout: 10000,
-          socketTimeout: 10000,
-          pool: {
-            maxConnections: 3,
-            maxMessages: 50,
-            rateDelta: 3000,
-            rateLimit: 10
-          }
-        });
-        
-        // Try sending with fallback transporter
-        const mailOptions = {
-          from: EMAIL_FROM,
-          to: options.to,
-          subject: options.subject,
-          text: options.text,
-          html: options.html
-        };
-        
-        const response = await fallbackTransporter.sendMail(mailOptions);
-        console.log(`✅ SUCCESS! Email sent via port 465 (SSL)`);
-        console.log(`   📝 The SMTP_PORT should be changed to 465 for Render compatibility`);
-        console.log(`   → Update Render Dashboard → Environment → SMTP_PORT=465`);
-        
-        // Update main transporter for future emails
-        transporter = fallbackTransporter;
-        fallbackAttempted = true;
-        
+        const response = await transporter.sendMail(mailOptions);
+        console.log(`✅ Email sent (attempt ${attempt}/3)`);
         return { success: true, messageId: response.messageId };
+      } catch (error) {
+        console.log(`   ⚠️  Attempt ${attempt}/3: ${error.message}`);
         
-      } catch (fallbackError) {
-        console.error('❌ Fallback to port 465 also failed:', fallbackError.message);
-        console.error('\n   Both port 587 and 465 failed. This indicates:');
-        console.error('   1. Render may be blocking SMTP connections entirely');
-        console.error('   2. SMTP credentials are invalid');
-        console.error('   3. Network configuration on Render needs adjustment');
+        // Exit early on auth errors
+        if (error.message.toUpperCase().includes('AUTH')) {
+          throw error;
+        }
+        
+        if (attempt < 3) {
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+        }
       }
     }
     
-    // Provide specific diagnostics for different error types
-    if (errorClassification === 'AUTH') {
-      console.error('   🔐 AUTHENTICATION ERROR - Credentials invalid');
-      console.error('   → Verify SMTP_USER and SMTP_PASSWORD on Render Dashboard');
-      console.error('   → For Brevo: SMTP_PASSWORD should start with "xsmtpsib-"');
-    } else if (errorClassification === 'TIMEOUT' || errorClassification === 'NETWORK') {
-      console.error('   🌐 NETWORK ERROR - Cannot reach SMTP server');
-      console.error('   → Suggestion: Change SMTP_PORT from 587 to 465 on Render Dashboard');
-      console.error('   → Then redeploy the service');
-      console.error('   → Or try Gmail: SMTP_HOST=smtp.gmail.com (requires app password)');
+  } catch (primaryError) {
+    console.error('❌ Email failed:', primaryError.message);
+    
+    // Try Gmail fallback if configured
+    if (process.env.GMAIL_APP_PASSWORD && primaryError.message.includes('timeout')) {
+      console.log('\n🔄 Trying Gmail fallback...');
+      
+      try {
+        const gmailTransport = nodemailer.createTransport({
+          host: 'smtp.gmail.com',
+          port: 587,
+          secure: false,
+          auth: {
+            user: process.env.GMAIL_USER || SMTP_USER,
+            pass: process.env.GMAIL_APP_PASSWORD
+          },
+          connectionTimeout: 8000,
+          socketTimeout: 8000
+        });
+        
+        const response = await gmailTransport.sendMail(mailOptions);
+        console.log(`✅ Email sent via Gmail!`);
+        return { success: true, messageId: response.messageId };
+      } catch (gmailError) {
+        console.error(`❌ Gmail also failed: ${gmailError.message}`);
+      }
     }
     
-    // Don't block registration - still return error but allow app to continue
-    return { success: false, error: errorMessage, code: errorCode, type: errorClassification };
+    console.error('\n💡 Suggestion:');
+    if (primaryError.message.includes('timeout')) {
+      console.error('   • Change SMTP_PORT to 465 on Render Dashboard');
+      console.error('   • Or setup Gmail: GMAIL_USER=your@gmail.com, GMAIL_APP_PASSWORD=...');
+    } else if (primaryError.message.toUpperCase().includes('AUTH')) {
+      console.error('   • Verify SMTP_USER and SMTP_PASSWORD are correct');
+    }
+    
+    return { success: false, error: primaryError.message };
   }
 };
 
