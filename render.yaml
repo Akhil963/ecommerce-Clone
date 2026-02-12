@@ -1,5 +1,17 @@
 services:
   - type: web
+    name: amazon-clone-frontend
+    env: node
+    plan: free
+    buildCommand: cd client && npm install && npm run build
+    startCommand: node server.js
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: NODE_ENV
+        value: production
+
+  - type: web
     name: amazon-clone-api
     env: node
     plan: free
@@ -20,22 +32,24 @@ services:
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
+      - key: GOOGLE_CALLBACK_URL
+        value: https://amazon-clone-api-mh36.onrender.com/api/auth/google/callback
       - key: TWILIO_ACCOUNT_SID
         sync: false
       - key: TWILIO_AUTH_TOKEN
         sync: false
       - key: TWILIO_PHONE_NUMBER
         sync: false
-      - key: SMTP_HOST
-        value: smtp-relay.brevo.com
-      - key: SMTP_PORT
-        value: 587
-      - key: SMTP_USER
+      - key: EMAILJS_SERVICE_ID
         sync: false
-      - key: SMTP_PASSWORD
+      - key: EMAILJS_TEMPLATE_ID
+        sync: false
+      - key: EMAILJS_PUBLIC_KEY
+        sync: false
+      - key: EMAILJS_PRIVATE_KEY
         sync: false
       - key: CLIENT_URL
-        value: https://ecommerce-clonee.vercel.app
+        value: https://amazon-clone-frontend-eqts.onrender.com
 
 databases:
   - name: mongodb
