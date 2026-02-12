@@ -1,191 +1,60 @@
-const nodemailer = require('nodemailer');
+const emailjs = require('@emailjs/nodejs');
 
-// Email configuration
-const MAX_RETRIES = 3;
-const RETRY_DELAY = 3000;
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+// EmailJS Configuration
+const EMAILJS_SERVICE_ID = process.env.EMAILJS_SERVICE_ID;
+const EMAILJS_TEMPLATE_ID = process.env.EMAILJS_TEMPLATE_ID;
+const EMAILJS_PUBLIC_KEY = process.env.EMAILJS_PUBLIC_KEY;
+const EMAILJS_PRIVATE_KEY = process.env.EMAILJS_PRIVATE_KEY;
 
-// Pending email queue for background retry
-let emailQueue = [];
+let emailServiceReady = false;
 
-// Initialize email transporter with fallback support
-let transporter = null;
-let emailProvider = 'none';
-
-// Helper to create transporter with timeout protection
-function createTransporter(config) {
-  return nodemailer.createTransport({
-    ...config,
-    connectionTimeout: 30000,
-    socketTimeout: 30000,
-    greetingTimeout: 15000,
-    pool: {
-      maxConnections: 2,
-      maxMessages: 100,
-      rateDelta: 2000,
-      rateLimit: 14
-    }
+// Initialize EmailJS
+if (EMAILJS_SERVICE_ID && EMAILJS_PUBLIC_KEY && EMAILJS_PRIVATE_KEY) {
+  emailjs.init({
+    publicKey: EMAILJS_PUBLIC_KEY,
+    privateKey: EMAILJS_PRIVATE_KEY
   });
-}
-
-// Try to initialize with primary SMTP config
-if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASSWORD) {
-  try {
-    transporter = createTransporter({
-      host: process.env.SMTP_HOST,
-      port: process.env.SMTP_PORT || 587,
-      secure: false,
-      requireTLS: true,
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASSWORD
-      }
-    });
-    
-    // Detect provider for logging
-    if (process.env.SMTP_HOST.includes('brevo')) {
-      emailProvider = 'Brevo';
-    } else if (process.env.SMTP_HOST.includes('sendgrid')) {
-      emailProvider = 'SendGrid';
-    } else if (process.env.SMTP_HOST.includes('gmail')) {
-      emailProvider = 'Gmail';
-    } else {
-      emailProvider = 'Custom SMTP';
-    }
-    
-    console.log(`✅ Email service configured (${emailProvider})`);
-  } catch (err) {
-    console.error('❌ Failed to initialize email service:', err.message);
-    transporter = null;
-  }
+  emailServiceReady = true;
+  console.log('✅ EmailJS service initialized');
 } else {
-  console.warn('⚠️  Email service not configured - using fallback mode');
+  console.warn('⚠️  EmailJS not configured - check EMAILJS_SERVICE_ID, EMAILJS_PUBLIC_KEY, EMAILJS_PRIVATE_KEY');
 }
 
-// Send email with retry logic and fallback
-exports.sendEmail = async (options, retryCount = 0) => {
-  // If no transporter, log and queue for later
-  if (!transporter) {
+// Send email using EmailJS
+exports.sendEmail = async (options) => {
+  if (!emailServiceReady) {
     console.log('📧 [NO EMAIL CONFIG] Would send to:', options.to, '| Subject:', options.subject);
-    
-    // Queue for retry when service is ready
-    const emailItem = {
-      to: options.to,
-      subject: options.subject,
-      text: options.text,
-      html: options.html,
-      timestamp: Date.now(),
-      attempts: 0
-    };
-    
-    emailQueue.push(emailItem);
-    console.log(`📋 Email queued (queue length: ${emailQueue.length})`);
-    
     return {
       success: true,
-      queued: true,
-      message: 'Email queued for delivery'
+      message: 'Email service not configured'
     };
   }
-
-  const fromEmail = process.env.EMAIL_FROM || `"${process.env.EMAIL_FROM_NAME || 'Amazon Ecommerce'}" <${process.env.SMTP_USER}>`;
-  
-  const mailOptions = {
-    from: fromEmail,
-    to: options.to,
-    subject: options.subject,
-    text: options.text,
-    html: options.html
-  };
 
   try {
-    await transporter.sendMail(mailOptions);
-    console.log(`✅ Email sent via ${emailProvider} to: ${options.to}`);
-    return { success: true, provider: emailProvider };
+    const templateParams = {
+      to_email: options.to,
+      subject: options.subject,
+      html_content: options.html || options.text,
+      to_name: options.to_name || 'Customer'
+    };
+
+    const response = await emailjs.send(
+      EMAILJS_SERVICE_ID,
+      EMAILJS_TEMPLATE_ID,
+      templateParams
+    );
+
+    console.log(`✅ Email sent to: ${options.to}`);
+    return { success: true, messageId: response.status };
   } catch (error) {
-    const isTimeoutError = error.code === 'ETIMEDOUT' || 
-                          error.code === 'ECONNREFUSED' || 
-                          error.code === 'EHOSTUNREACH' ||
-                          error.code === 'ENOTFOUND';
-    
-    const isAuthError = error.code === 'EAUTH' || 
-                        error.message.includes('401') ||
-                        error.message.includes('authentication');
-    
-    // Retry on timeout errors
-    if (isTimeoutError && retryCount < MAX_RETRIES) {
-      const delay_ms = RETRY_DELAY * (retryCount + 1); // Exponential backoff
-      console.warn(`⏱️  Connection timeout, retrying (${retryCount + 1}/${MAX_RETRIES}) in ${delay_ms}ms...`);
-      await delay(delay_ms);
-      return exports.sendEmail(options, retryCount + 1);
-    }
-    
-    // Queue email for background retry on failure
-    const emailItem = {
+    console.error('❌ Email send failed:', {
       to: options.to,
       subject: options.subject,
-      text: options.text,
-      html: options.html,
-      timestamp: Date.now(),
-      attempts: retryCount + 1,
-      lastError: error.message
-    };
-    
-    emailQueue.push(emailItem);
-    
-    console.error(`❌ Email send failed (${emailProvider}), queued for retry:`, {
-      to: options.to,
-      provider: emailProvider,
-      error: error.message,
-      attempts: retryCount + 1,
-      queueLength: emailQueue.length
-    });
-    
-    return {
-      success: false,
-      queued: true,
-      provider: emailProvider,
       error: error.message
-    };
+    });
+    return { success: false, error: error.message };
   }
 };
-
-// Retry queued emails periodically
-setInterval(async () => {
-  if (emailQueue.length === 0 || !transporter) return;
-  
-  const retriable = emailQueue.filter(e => e.attempts < MAX_RETRIES);
-  
-  if (retriable.length > 0) {
-    console.log(`📤 Retrying ${retriable.length} queued emails...`);
-  }
-  
-  for (let i = emailQueue.length - 1; i >= 0; i--) {
-    const email = emailQueue[i];
-    
-    if (email.attempts >= MAX_RETRIES) {
-      console.error(`⛔ Permanently failed, removing from queue:`, email.to);
-      emailQueue.splice(i, 1);
-      continue;
-    }
-    
-    try {
-      const result = await exports.sendEmail({
-        to: email.to,
-        subject: email.subject,
-        text: email.text,
-        html: email.html
-      }, email.attempts);
-      
-      if (result.success) {
-        emailQueue.splice(i, 1);
-        console.log(`✅ Retried email succeeded: ${email.to}`);
-      }
-    } catch (err) {
-      console.error(`⚠️  Retry attempt failed for ${email.to}:`, err.message);
-    }
-  }
-}, 5 * 60 * 1000); // Retry every 5 minutes
 
 // Send verification email
 exports.sendVerificationEmail = async (email, name, token) => {
