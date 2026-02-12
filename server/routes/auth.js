@@ -50,6 +50,7 @@ router.post('/register/init', [
     // Generate email OTP
     const emailOTP = generateOTP();
     const registrationId = generateRandomToken();
+    console.log(`📧 EMAIL OTP for ${email}: ${emailOTP} (expires in 10 min)`);
 
     // Store pending registration
     pendingRegistrations.set(registrationId, {
@@ -122,6 +123,7 @@ router.post('/register/verify-email', [
     registration.phoneOTP = phoneOTP;
     registration.phoneOTPExpires = Date.now() + 10 * 60 * 1000;
     pendingRegistrations.set(registrationId, registration);
+    console.log(`📱 PHONE OTP for +91${registration.phone}: ${phoneOTP} (expires in 10 min)`);
 
     // Send phone OTP
     const smsResult = await sendOTP(registration.phone, phoneOTP);
@@ -256,6 +258,7 @@ router.post('/register/resend-phone-otp', [
     registration.phoneOTP = phoneOTP;
     registration.phoneOTPExpires = Date.now() + 10 * 60 * 1000;
     pendingRegistrations.set(registrationId, registration);
+    console.log(`📱 PHONE OTP (RESEND) for +91${registration.phone}: ${phoneOTP} (expires in 10 min)`);
 
     // Send phone OTP
     await sendOTP(registration.phone, phoneOTP);

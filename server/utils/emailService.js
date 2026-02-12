@@ -168,6 +168,8 @@ exports.sendVerificationEmail = async (email, name, token) => {
 
 // Send email OTP for registration verification
 exports.sendEmailOTP = async (email, name, otp) => {
+  console.log(`\ud83d\udce7 Attempting to send EMAIL OTP to ${email}: ${otp}`);
+  
   const html = `
     <!DOCTYPE html>
     <html>
