@@ -252,10 +252,6 @@ const Products = () => {
               </div>
             </div>
           )}
-                <FilterSidebar />
-              </div>
-            </div>
-          )}
 
           {/* Products Grid */}
           <div className="flex-1 min-w-0">
