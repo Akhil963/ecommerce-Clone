@@ -31,35 +31,29 @@ if (SMTP_HOST && SMTP_USER && SMTP_PASSWORD) {
         user: SMTP_USER,
         pass: SMTP_PASSWORD
       },
-      // OPTIMIZED TIMEOUTS: Reduced for faster failure detection
-      connectionTimeout: 30000,   // 30 seconds (was 60s - reduced for faster retry)
-      socketTimeout: 30000,       // 30 seconds (was 60s - reduced for faster retry)
-      greetingTimeout: 5000,      // 5 seconds for initial connection greeting
+      // OPTIMIZED TIMEOUTS: Balanced for Render cold starts
+      connectionTimeout: 15000,   // 15 seconds (reduced from 30s for faster feedback)
+      socketTimeout: 15000,       // 15 seconds
+      greetingTimeout: 5000,      // 5 seconds for SMTP greeting
       
       // CONNECTION POOL: Optimized for email service
       pool: {
-        maxConnections: 5,      // Increased from 2 to handle multiple simultaneous sends
-        maxMessages: 100,       // Messages per connection before reconnect
-        rateDelta: 2000,        // Check rate limit every 2 seconds
-        rateLimit: 20           // Max 20 emails per rateDelta period (Brevo: 300/day = ~12/hour)
+        maxConnections: 5,      
+        maxMessages: 100,       
+        rateDelta: 2000,        
+        rateLimit: 20           // Max 20 emails per 2s = ~300/day (Brevo limit)
       },
       
       // LOGGING: Better debugging
-      logger: process.env.DEBUG_EMAIL === 'true',  // Set DEBUG_EMAIL=true to see SMTP logs
+      logger: process.env.DEBUG_EMAIL === 'true',
       debug: process.env.DEBUG_EMAIL === 'true'
     });
 
-    // Verify connection immediately
-    transporter.verify((err, success) => {
-      if (err) {
-        console.error('❌ SMTP Verification Failed:', err.message);
-        console.error('   Check your SMTP credentials on Render Dashboard');
-        emailServiceReady = false;
-      } else if (success) {
-        emailServiceReady = true;
-        console.log(`✅ Email service initialized and verified (SMTP: ${SMTP_HOST}:${SMTP_PORT})`);
-      }
-    });
+    // Mark as ready immediately - verification happens on first email send
+    emailServiceReady = true;
+    console.log(`✅ Email service initialized (SMTP: ${SMTP_HOST}:${SMTP_PORT})`);
+    console.log(`   ℹ️  Credentials loaded for: ${SMTP_USER}`);
+    console.log(`   ℹ️  Connection will be verified on first email send`);
     
   } catch (err) {
     console.error('❌ SMTP initialization error:', err.message);
@@ -138,6 +132,9 @@ const classifyEmailError = (errorCode) => {
   return 'TRANSIENT';  // Unknown - assume transient and retry
 };
 
+// First-email flag to perform connection check
+let connectionVerified = false;
+
 // Send email using SMTP
 exports.sendEmail = async (options) => {
   if (!emailServiceReady || !transporter) {
@@ -160,6 +157,24 @@ exports.sendEmail = async (options) => {
   }
 
   try {
+    // Verify connection on first email send (lazy verification)
+    if (!connectionVerified) {
+      console.log('🔍 Verifying SMTP connection on first email send...');
+      await new Promise((resolve, reject) => {
+        transporter.verify((err, success) => {
+          if (err) {
+            console.error('⚠️  SMTP Verification Warning:', err.message);
+            console.error('   Will attempt to send anyway - connection may reconnect on send');
+            connectionVerified = false;  // Will retry on next email
+          } else if (success) {
+            console.log(`✅ SMTP connection verified successfully`);
+            connectionVerified = true;
+          }
+          resolve();  // Don't reject - let send attempt happen anyway
+        });
+      });
+    }
+
     const mailOptions = {
       from: EMAIL_FROM,
       to: options.to,
@@ -170,7 +185,7 @@ exports.sendEmail = async (options) => {
 
     const response = await sendEmailWithRetry(mailOptions);
 
-    console.log(`✅ Email sent to: ${options.to} (Message ID: ${response.messageId})`);
+    console.log(`✅ Email sent successfully to: ${options.to}`);
     return { success: true, messageId: response.messageId };
   } catch (error) {
     const errorMessage = error?.message || JSON.stringify(error) || 'Unknown error';
@@ -188,13 +203,14 @@ exports.sendEmail = async (options) => {
     
     // Provide actionable diagnostic for different error types
     if (errorClassification === 'AUTH') {
-      console.error('   🔐 This is an AUTHENTICATION error');
-      console.error('   → Check SMTP_USER and SMTP_PASSWORD on Render Dashboard');
-      console.error('   → Verify credentials with your SMTP provider');
+      console.error('   🔐 AUTHENTICATION ERROR - Credentials rejected by Brevo');
+      console.error('   → Verify SMTP_USER and SMTP_PASSWORD on Render Dashboard');
+      console.error('   → Login to https://www.brevo.com and check SMTP settings');
     } else if (errorClassification === 'TIMEOUT' || errorClassification === 'NETWORK') {
-      console.error('   🌐 This is a NETWORK/TIMEOUT error');
-      console.error('   → If retries succeeded eventually, this is normal');
-      console.error('   → If all retries failed: check if Render can reach smtp-relay.brevo.com:587');
+      console.error('   🌐 NETWORK/TIMEOUT ERROR');
+      console.error('   → If retries eventually succeeded: check logs for retry success message');
+      console.error('   → If all retries failed: Render may not have network access to Brevo');
+      console.error('   → Try: Add DEBUG_EMAIL=true environment variable for detailed logs');
     }
     
     // Still return to not block registration, but log the error
