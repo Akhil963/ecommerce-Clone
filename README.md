@@ -41,8 +41,8 @@ A professional, full-featured e-commerce platform built with the **MERN stack** 
 - **Scalable Architecture**: Clean separation of concerns with microservices-ready design
 
 ### Live Demo
-🚀 **Frontend**: https://amazon-clone-frontend-eqts.onrender.com
-🔧 **Backend API**: https://amazon-clone-api-mh36.onrender.com/api
+🚀 **Frontend**: (https://amazon-clone-frontend-eqts.onrender.com)
+🔧 **Backend API**: (https://amazon-clone-api-mh36.onrender.com/api)
 
 ---
 
