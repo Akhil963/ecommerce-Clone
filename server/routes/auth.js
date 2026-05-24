@@ -566,14 +566,15 @@ router.post('/forgot-password', [
   }
 });
 
-// @route   POST /api/auth/reset-password/:token
+// @route   POST /api/auth/reset-password
 // @desc    Reset password
 // @access  Public
-router.post('/reset-password/:token', [
+router.post('/reset-password', [
+  body('token').notEmpty().withMessage('Reset token is required'),
   body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters')
 ], validate, async (req, res, next) => {
   try {
-    const hashedToken = hashToken(req.params.token);
+    const hashedToken = hashToken(req.body.token);
 
     const user = await User.findOne({
       passwordResetToken: hashedToken,
