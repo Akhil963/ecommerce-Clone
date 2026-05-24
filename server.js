@@ -16,10 +16,10 @@ app.use(compression());
 app.use(express.static(buildPath, {
   maxAge: '1y',
   etag: false,
-  // Don't respond with 404 - let our middleware handle it
-  setHeaders: (res, path) => {
+  fallthrough: true, // CRITICAL: Pass to next middleware instead of sending 404
+  setHeaders: (res, filePath) => {
     // Never cache index.html
-    if (path.endsWith('index.html')) {
+    if (filePath.endsWith('index.html')) {
       res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
     }
   }
