@@ -42,7 +42,6 @@ A professional, full-featured e-commerce platform built with the **MERN stack** 
 
 ### Live Demo
 🚀 **Frontend**: (https://amazon-clone-frontend-eqts.onrender.com)
-
 🔧 **Backend API**: (https://amazon-clone-api-mh36.onrender.com/api)
 
 ---
