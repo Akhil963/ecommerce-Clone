@@ -32,7 +32,13 @@ app.get('/health', (req, res) => {
 
 // SPA fallback middleware - catch all routes and serve index.html
 // This must come AFTER static middleware to catch unmatched routes
+// IMPORTANT: This will NOT match routes starting with /api since backend handles those
 app.use((req, res) => {
+  // Skip API routes - they should be handled by the backend API server
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ success: false, message: 'API endpoint not found. Are you connecting to the correct backend server?' });
+  }
+  
   console.log(`📍 SPA Route: ${req.method} ${req.path}`);
   res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.set('Pragma', 'no-cache');
